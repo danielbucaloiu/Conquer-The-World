@@ -25,7 +25,7 @@
       mapCv = document.createElement('canvas'); mapCv.width = W; mapCv.height = H; mapCtx = mapCv.getContext('2d');
       img = mapCtx.createImageData(W, H); px32 = new Uint32Array(img.data.buffer);
       pickOwner = Uint16Array.from(ident); owner = pickOwner;
-      paintAll(); resize(); fitView(); $('loading').classList.add('hidden'); $('menu').classList.remove('hidden');
+      paintAll(); resize(); fitView(); $('loading').classList.add('hidden'); $('menu').classList.remove('hidden'); updateContinue();
       console.info('[Mapa] países:', world.N, '· adyacencias terrestres:', world.report.landPairs, '· marítimas:', world.report.seaPairs, '· enlaces de último recurso:', world.bridges.join('; ') || 'ninguno');
       requestAnimationFrame(frame);
     }, 30);
@@ -142,7 +142,24 @@
   // ---------- flujo de juego ----------
   const cname = c => world.countries[c].name;
   function toast(msg, ms) { const t = $('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.add('hidden'), ms || 3200); }
+  // ---------- guardado (localStorage) ----------
+  const SAVE_KEY = 'cm_save';
+  function saveGame() {
+    if (!game || phase !== 'play') return;
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(game.serialize())); } catch (e) { console.warn('[Guardado] no se pudo guardar:', e); }
+  }
+  function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* sin almacenamiento */ } updateContinue(); }
+  function readSave() { try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  function updateContinue() { $('btn-continue').classList.toggle('hidden', !readSave()); }
+  function continueGame() {
+    let g; try { g = E.restoreGame(world, readSave()); } catch (e) { console.warn('[Guardado]', e); clearSave(); toast('La partida guardada no es válida y se ha descartado.'); return; }
+    if (g.won || g.defeated) { clearSave(); toast('La partida guardada ya había terminado.'); return; }
+    Sfx.play('confirm'); game = g; owner = game.owner; selected = 0; hl.fill(0); phase = 'play'; arrowSt = null;
+    paintAll(); ['menu', 'info', 'action', 'battle', 'pickhint', 'btn-confirm'].forEach(i => $(i).classList.add('hidden')); $('hud').classList.remove('hidden'); $('zoom').classList.remove('hidden'); $('legend').classList.remove('hidden');
+    syncSpeed(); hud(); refreshHighlights(); updateBottom(); fitView(); toast(`Partida recuperada: controlas ${cname(game.player)}.`, 3500);
+  }
   function startPick() {
+    clearSave();
     if (game && game.invasion && game.invasion.state === 'active') game.cancelInvasion();
     game = null; pickOwner = Uint16Array.from(ident); owner = pickOwner; selected = 0; arrowSt = null; phase = 'pick'; hl.fill(0);
     paintAll(); ['menu', 'hud', 'info', 'action', 'battle'].forEach(i => $(i).classList.add('hidden')); $('pickhint').classList.remove('hidden'); $('zoom').classList.remove('hidden'); $('legend').classList.add('hidden'); $('btn-confirm').classList.add('hidden'); fitView(); updateBottom();
@@ -195,7 +212,7 @@
     if (phase !== 'pick' || !selected) return;
     Sfx.play('confirm'); game = E.createGame(world, selected); owner = game.owner; selected = 0; hl.fill(0); phase = 'play'; arrowSt = null;
     paintAll(); $('info').classList.add('hidden'); $('btn-confirm').classList.add('hidden'); $('pickhint').classList.add('hidden'); $('hud').classList.remove('hidden'); $('legend').classList.remove('hidden');
-    hud(); refreshHighlights(); toast(`Controlas ${cname(game.player)}. Elige un país resaltado para invadirlo.`, 4200);
+    hud(); refreshHighlights(); saveGame(); toast(`Controlas ${cname(game.player)}. Elige un país resaltado para invadirlo.`, 4200);
   }
   function startInvasion() {
     if (!selected || !game) return; const D = selected, r = game.startInvasion(D);
@@ -205,12 +222,12 @@
   function refreshHighlightsInv(D) { for (let c = 1; c <= world.N; c++) { const v = c === D ? 3 : 0; if (hl[c] !== v) { hl[c] = v; repaintCountry(c); } } }
   function cancelInvasion() {
     if (!game || !game.cancelInvasion()) return; Sfx.play('cancel'); arrowSt = null; $('battle').classList.add('hidden'); updateBottom(); applyDirty(); refreshHighlights(); hud();
-    toast('Invasión cancelada: se conserva el frente tal y como está.'); lastProg = 0;
+    toast('Invasión cancelada: se conserva el frente tal y como está.'); lastProg = 0; saveGame();
   }
   function onInvasionEnd(inv) {
     arrowSt = null; $('battle').classList.add('hidden'); selected = 0; $('action').classList.add('hidden'); updateBottom(); applyDirty(); refreshHighlights(); hud();
-    if (inv.state === 'conquered') { toast(`¡${cname(inv.D)} se une a ${cname(game.player)}! Poder +${inv.gain} → ${game.playerPower()}. Rearme mundial: +${game.rearmPct()}%.`, 5000); if (game.won) { phase = 'won'; victory(); } else Sfx.play('conquest'); }
-    else if (inv.state === 'lost') { phase = 'lost'; defeat(inv); }
+    if (inv.state === 'conquered') { toast(`¡${cname(inv.D)} se une a ${cname(game.player)}! Poder +${inv.gain} → ${game.playerPower()}. Rearme mundial: +${game.rearmPct()}%.`, 5000); if (game.won) { phase = 'won'; clearSave(); victory(); } else { Sfx.play('conquest'); saveGame(); } }
+    else if (inv.state === 'lost') { phase = 'lost'; clearSave(); defeat(inv); }
   }
   function defeat(inv) {
     Sfx.play('defeat'); Sfx.play('defeat', 350);
@@ -258,23 +275,24 @@
     const r = $('vol'); r.oninput = () => { Sfx.setVolume(r.value / 100); $('vol-val').textContent = r.value + '%'; }; r.onchange = () => Sfx.play('confirm');
     $('mute').onchange = e => { Sfx.setMuted(e.target.checked); if (!e.target.checked) Sfx.play('click'); };
   }
-  function askReset() { modal('REINICIAR', '<p>Se perderá la partida actual y volverás a elegir el país inicial.</p>', [['SÍ, REINICIAR', startPick, 'danger'], ['NO', null]]); }
+  function askReset() { modal('REINICIAR', '<p>Se borrará la partida guardada y volverás a elegir el país inicial.</p>', [['SÍ, REINICIAR', startPick, 'danger'], ['NO', null]]); }
 
   // ---------- bucle principal único ----------
-  let last = 0, tUi = 0, tArr = 0, tHl = 0;
+  let last = 0, tUi = 0, tArr = 0, tHl = 0, tSave = 0;
   function frame(ts) {
     const dt = Math.min(0.1, (ts - last) / 1000 || 0); last = ts;
     if (game && game.invasion && game.invasion.state === 'active') {
       const inv = game.invasion; inv.advance(dt * game.speed); applyDirty(); tUi += dt; tArr += dt; tHl += dt;
+      tSave += dt;
       if (inv.state !== 'active') onInvasionEnd(inv);
-      else { if (tUi > .15) { tUi = 0; battleUI(); } if (tArr > .45) { tArr = 0; arrowSt = game.arrows(inv.D); } }
+      else { if (tSave > 5) { tSave = 0; saveGame(); } if (tUi > .15) { tUi = 0; battleUI(); } if (tArr > .45) { tArr = 0; arrowSt = game.arrows(inv.D); } }
     }
     if (needsDraw || arrowSt) { draw(ts); needsDraw = false; }
     requestAnimationFrame(frame);
   }
 
   // ---------- eventos de la interfaz (registrados una sola vez) ----------
-  $('btn-new').onclick = startPick; $('btn-guide0').onclick = guide; $('btn-opt0').onclick = options; $('btn-opt').onclick = options;
+  $('btn-new').onclick = startPick; $('btn-continue').onclick = continueGame; $('btn-guide0').onclick = guide; $('btn-opt0').onclick = options; $('btn-opt').onclick = options;
   // clic genérico en botones (los que tienen sonido propio se excluyen)
   ['btn-confirm', 'btn-invade', 'btn-cancel-inv'].forEach(i => $(i).dataset.nosound = '1');
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('.btn'); if (b && !b.dataset.nosound && !b.disabled) Sfx.play('click'); }); $('btn-guide').onclick = guide; $('btn-reset').onclick = askReset;
@@ -283,6 +301,7 @@
   $('z-in').onclick = () => zoomAt(cw / 2, ch / 2, 1.5); $('z-out').onclick = () => zoomAt(cw / 2, ch / 2, 1 / 1.5); $('z-fit').onclick = fitView;
   addEventListener('resize', () => { const a = view.k === view.fit; resize(); const keep = a; fitView(); if (!keep) needsDraw = true; });
   addEventListener('keydown', e => { if (e.key === 'Escape' && phase === 'play' && !(game.invasion && game.invasion.state === 'active')) select(0); });
+  addEventListener('pagehide', saveGame); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveGame(); });
   window.__game = { get world() { return world; }, get game() { return game; }, view, pick, clickAt }; // utilidades para depurar en consola
   boot();
 })();

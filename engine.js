@@ -223,6 +223,16 @@
     const g = {
       world, player: playerIdx, owner, partial, own, compCap, alive: N - 1, defeated: false, lost: false, conquered: new Set(), conqList: [], growth: 0, trackD: 0, compD: new Int32Array(world.compCount.length), dirty: [], speed: 1, invasion: null, invCount: 0, won: false,
       fflag: new Uint8Array(W * H),
+      /** Estado guardable (JSON). El control se codifica como tramos [inicio, largo, dueño] donde owner ≠ ident. Una invasión activa no se guarda: al cargar equivale a cancelarla. */
+      serialize() {
+        const runs = []; let i = 0; const n = owner.length;
+        while (i < n) {
+          if (owner[i] === ident[i]) { i++; continue; }
+          const o = owner[i], s = i; while (i < n && owner[i] === o && ident[i] !== o) i++;
+          runs.push(s, i - s, o);
+        }
+        return { v: 1, player: playerIdx, runs, conqList: this.conqList, invCount: this.invCount, speed: this.speed };
+      },
       /** Poder del jugador = Poder base de su país + aportaciones guardadas de cada conquista. */
       playerPower() { return countries[playerIdx].power + this.growth; },
       /** Amenaza mundial t∈[0,1): cuanto más crece el imperio, más se rearman los demás (alianzas defensivas). */
@@ -412,6 +422,27 @@
     }
   }
 
-  const api = { CFG, build, createGame, computePowers, contribOf, naturalEarth, mulberry32 };
+  /** Reconstruye una partida desde `serialize()`. Lanza Error si los datos no son válidos. */
+  function restoreGame(world, data) {
+    const N = world.N, n = world.W * world.H;
+    if (!data || data.v !== 1 || !(data.player >= 1 && data.player <= N) || !Array.isArray(data.runs) || data.runs.length % 3 || !Array.isArray(data.conqList)) throw new Error('Partida guardada no válida');
+    const g = createGame(world, data.player), { owner, partial, own, compCap } = g, ident = world.ident, r = data.runs;
+    for (let k = 0; k < r.length; k += 3) {
+      const s = r[k], len = r[k + 1], o = r[k + 2];
+      if (!(s >= 0 && len > 0 && s + len <= n && o >= 1 && o <= N)) throw new Error('Partida guardada no válida');
+      owner.fill(o, s, s + len);
+    }
+    own.fill(0); partial.fill(0); compCap.fill(0);
+    for (let i = 0; i < n; i++) {
+      const o = owner[i]; if (o) own[o]++;
+      if (o === data.player) { partial[ident[i]]++; compCap[world.comp[i]]++; }
+    }
+    g.alive = 0; for (let c = 1; c <= N; c++) if (c !== data.player && own[c] > 0) g.alive++;
+    for (const [c, add] of data.conqList) { g.conquered.add(c); g.conqList.push([c, add]); g.growth += add; }
+    g.invCount = data.invCount | 0; g.speed = [1, 2, 4, 8].includes(data.speed) ? data.speed : 1;
+    g.defeated = partial[data.player] === 0; g.won = g.alive === 0;
+    return g;
+  }
+  const api = { CFG, build, createGame, restoreGame, computePowers, contribOf, naturalEarth, mulberry32 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Engine = api;
 })(typeof window !== 'undefined' ? window : globalThis);
