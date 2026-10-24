@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Conquista Mundial — Pixel Art</title>
+<!-- Fuentes pixel art (opcionales: si no hay red se usa una monoespaciada de respaldo) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="map" aria-label="Mapa mundial"></canvas>
+
+<div id="loading" class="screen"><div class="panel center"><h1 class="title">CARGANDO MAPA</h1><p id="loadmsg">Rasterizando 196 países…</p></div></div>
+
+<!-- Pantalla inicial -->
+<div id="menu" class="screen hidden">
+  <div class="panel center menu-box">
+    <h1 class="title">CONQUISTA<br>MUNDIAL</h1>
+    <p class="sub">Elige un país y conquista los 196 del mundo.</p>
+    <button id="btn-new" class="btn big">NUEVA PARTIDA</button>
+    <button id="btn-guide0" class="btn">CÓMO JUGAR</button>
+    <button id="btn-opt0" class="btn">OPCIONES</button>
+  </div>
+</div>
+
+<!-- Barra superior -->
+<header id="hud" class="hidden">
+  <div class="panel hud-box"><span id="hud-flag" class="flag"></span>
+    <div><div class="lbl">PAÍS</div><div id="hud-name" class="val">—</div></div></div>
+  <div class="panel hud-box"><div><div class="lbl">PODER</div><div id="hud-power" class="val big-val">0</div></div></div>
+  <div class="panel hud-box"><div><div class="lbl">CONQUISTADOS</div><div id="hud-conq" class="val">0/0</div></div></div>
+  <div class="panel hud-box" title="Cuanto más crece tu imperio, más se rearman los países independientes (equilibrio de poder)"><div><div class="lbl">REARME MUNDIAL</div><div id="hud-alarm" class="val">+0%</div></div></div>
+  <div class="hud-btns">
+    <button id="btn-opt" class="btn small">OPCIONES</button>
+    <button id="btn-guide" class="btn small">AYUDA</button>
+    <button id="btn-reset" class="btn small danger">REINICIAR</button>
+  </div>
+</header>
+
+<div id="pickhint" class="panel hidden">ELIGE TU PAÍS INICIAL: toca cualquier país del mapa</div>
+
+<!-- Panel de información del país seleccionado -->
+<aside id="info" class="panel hidden">
+  <div id="info-name" class="info-name">—</div>
+  <div class="rows">
+    <div><span>PODER</span><b id="info-power">0</b></div>
+    <div><span>ESTADO</span><b id="info-state">—</b></div>
+    <div><span>CONTROLA</span><b id="info-ctrl">—</b></div>
+  </div>
+  <button id="btn-confirm" class="btn big hidden">CONFIRMAR</button>
+</aside>
+
+<!-- Panel de acción: objetivo seleccionado -->
+<section id="action" class="panel hidden">
+  <div class="act-head"><span class="lbl">OBJETIVO</span> <b id="act-name">—</b></div>
+  <div class="act-grid">
+    <div><span>TU PODER</span><b id="act-att">0</b></div>
+    <div><span>DEFENSOR</span><b id="act-def">0</b></div>
+    <div><span>DIFERENCIA</span><b id="act-diff">0</b></div>
+    <div><span>CONEXIÓN</span><b id="act-conn">—</b></div>
+  </div>
+  <div id="act-msg" class="act-msg"></div>
+  <div class="act-btns">
+    <button id="btn-invade" class="btn go">INVADIR</button>
+    <button id="btn-close" class="btn">CANCELAR</button>
+  </div>
+</section>
+
+<!-- Panel de batalla en curso -->
+<section id="battle" class="panel hidden">
+  <div class="act-head"><span class="lbl">INVADIENDO</span> <b id="bat-name">—</b> <span id="bat-pct" class="pct">0%</span></div>
+  <div class="act-grid">
+    <div><span>TU PODER</span><b id="bat-att">0</b></div>
+    <div><span>DEFENSOR</span><b id="bat-def">0</b></div>
+    <div><span>FRENTES</span><b id="bat-fr">1</b></div>
+    <div><span>TENDENCIA</span><b id="bat-tend">—</b></div>
+  </div>
+  <div class="act-btns">
+    <span class="lbl">VELOCIDAD</span>
+    <button class="btn small spd" data-speed="1">×1</button>
+    <button class="btn small spd" data-speed="2">×2</button>
+    <button class="btn small spd" data-speed="4">×4</button>
+    <button class="btn small spd" data-speed="8">×8</button>
+    <button id="btn-cancel-inv" class="btn danger">CANCELAR INVASIÓN</button>
+  </div>
+</section>
+
+<div id="zoom" class="hidden">
+  <button id="z-in" class="btn small" aria-label="Acercar">+</button>
+  <button id="z-out" class="btn small" aria-label="Alejar">−</button>
+  <button id="z-fit" class="btn small" aria-label="Ver todo">⌖</button>
+</div>
+
+<div id="legend" class="panel hidden">
+  <span><i style="background:#e03045"></i>Tuyo</span>
+  <span><i style="background:#6cbf6a"></i>Independiente</span>
+  <span><i class="glow"></i>Invadible</span>
+  <span><i class="sel"></i>Objetivo</span>
+</div>
+
+<div id="toast" class="panel hidden"></div>
+
+<!-- Modal genérico (guía, victoria, confirmación) -->
+<div id="modal" class="screen hidden">
+  <div class="panel modal-box"><h2 id="modal-title" class="title small-title"></h2><div id="modal-body"></div><div id="modal-btns" class="act-btns"></div></div>
+</div>
+
+<script src="data/world-data.js"></script>
+<script src="engine.js"></script>
+<script src="audio.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

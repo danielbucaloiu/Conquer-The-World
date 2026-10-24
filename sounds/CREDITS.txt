@@ -1,0 +1,5 @@
+Efectos de sonido de Kenney (https://kenney.nl), tomados de sus repositorios "Starter Kit" en GitHub (licencia MIT, Copyright Kenney):
+- Starter-Kit-City-Builder: toggle (click), rotate (select), placement-a (confirm), removal-a (cancel)
+- Starter-Kit-FPS: weapon_change (invade), enemy_hurt (error)
+- Starter-Kit-3D-Platformer: coin (conquest), fall (defeat)
+Convertidos a MP3 mono 22 kHz para compatibilidad con todos los navegadores.
